@@ -1,55 +1,47 @@
-# MCP Notes
+# 🧠 MCP Notes
 
-A Model Context Protocol (MCP) server for persistent knowledge graph notes. This server allows you to store and retrieve entities, observations, and relations in a structured knowledge graph with temporal queries, graph traversal, and rich metadata.
+**MCP Notes** is a powerful memory server that helps AI assistants remember and connect information over time. Think of it as a smart knowledge graph where you can store facts about people, projects, or concepts, link them together, and retrieve them intelligently—perfect for building AI agents with long-term memory.
 
-## Features
+Whether you're tracking user preferences, maintaining project context, or building relationship maps, MCP Notes provides a structured way to persist, search, and traverse your knowledge graph with confidence scores, timestamps, and rich metadata.
 
-- **Entity Management**: Create, read, search, and delete entities with types and observations
-- **Observation Tracking**: Add and remove observations from existing entities with timestamps, confidence scores, and sources
-- **Relation Management**: Create and delete relations between entities
-- **Knowledge Graph Operations**: Read the entire graph, search for specific nodes, or traverse connected entities
-- **Temporal Queries**: Query entities by time range (createdAt/updatedAt timestamps)
-- **Graph Traversal**: Walk relations to find connected entities (multi-hop BFS)
-- **Rich Metadata**: Entities and observations support optional metadata, confidence, and source tracking
-- **Auto-Migration**: Automatically migrates legacy plain-string observations to rich format on load
-- **Persistent Storage**: JSON file storage with daily logging
+## ✨ Features
 
-## Installation
+- **🏗️ Entity Management** - Create, read, search, and delete entities with types and observations
+- **📝 Observation Tracking** - Add and remove observations with timestamps, confidence scores, and sources
+- **🔗 Relation Management** - Create and delete relations between entities to build connections
+- **🔍 Knowledge Graph Operations** - Read the entire graph, search for specific nodes, or traverse connected entities
+- **⏰ Temporal Queries** - Query entities by time range using createdAt/updatedAt timestamps
+- **🚶 Graph Traversal** - Walk relations to find connected entities (multi-hop BFS)
+- **📊 Rich Metadata** - Support for optional metadata, confidence scores, and source tracking
+- **🔄 Auto-Migration** - Automatically migrates legacy plain-string observations to rich format on load
+- **💾 Persistent Storage** - JSON file storage with daily logging for reliability
 
-1. Install dependencies:
+## 🚀 Installation
+
 ```bash
+# Clone the repository
+git clone <your-repo-url>
+cd mcp_notes
+
+# Install dependencies
 npm install
-```
 
-2. Build the TypeScript code:
-```bash
+# Build the TypeScript code
 npm run build
 ```
 
-## Usage
+## 🎯 Quick Start
 
 ### Running the Server
 
-Start the server with:
 ```bash
 npm start
 ```
 
-The server runs on stdio and can be connected to by any MCP-compatible client.
+The server runs on stdio and connects to any MCP-compatible client.
 
-### Available Tools
+### Basic Example
 
-#### `create_entities`
-Create multiple new entities in the knowledge graph.
-
-**Parameters:**
-- `entities` (array): Array of entity objects with:
-  - `name` (string): The name of the entity
-  - `entityType` (string): The type of the entity
-  - `observations` (array): Initial observations (can be strings or objects with `content`, `confidence`, `source`)
-  - `metadata` (object, optional): Additional metadata for the entity
-
-**Example:**
 ```json
 {
   "entities": [
@@ -63,33 +55,13 @@ Create multiple new entities in the knowledge graph.
           "confidence": 0.9,
           "source": "user_profile"
         }
-      ],
-      "metadata": {
-        "department": "engineering"
-      }
+      ]
     }
   ]
 }
 ```
 
-#### `add_observations`
-Add new observations to existing entities.
-
-**Parameters:**
-- `observations` (array): Array of observation additions with:
-  - `entityName` (string): Name of the entity
-  - `contents` (array): Observations to add (can be strings or objects with `content`, `confidence`, `source`)
-
-#### `create_relations`
-Create relations between entities.
-
-**Parameters:**
-- `relations` (array): Array of relation objects with:
-  - `from` (string): Source entity name
-  - `to` (string): Target entity name
-  - `relationType` (string): Type of relation (use active voice)
-
-**Example:**
+Create relations between entities:
 ```json
 {
   "relations": [
@@ -102,13 +74,42 @@ Create relations between entities.
 }
 ```
 
-#### `delete_entities`
+## 🛠️ Available Tools
+
+### `create_entities`
+Create multiple new entities in the knowledge graph.
+
+**Parameters:**
+- `entities` (array): Array of entity objects with:
+  - `name` (string): The name of the entity
+  - `entityType` (string): The type of the entity
+  - `observations` (array): Initial observations (can be strings or objects with `content`, `confidence`, `source`)
+  - `metadata` (object, optional): Additional metadata for the entity
+
+### `add_observations`
+Add new observations to existing entities.
+
+**Parameters:**
+- `observations` (array): Array of observation additions with:
+  - `entityName` (string): Name of the entity
+  - `contents` (array): Observations to add (can be strings or objects with `content`, `confidence`, `source`)
+
+### `create_relations`
+Create relations between entities.
+
+**Parameters:**
+- `relations` (array): Array of relation objects with:
+  - `from` (string): Source entity name
+  - `to` (string): Target entity name
+  - `relationType` (string): Type of relation (use active voice)
+
+### `delete_entities`
 Delete entities and their associated relations.
 
 **Parameters:**
 - `entityNames` (array of strings): Names of entities to delete
 
-#### `delete_observations`
+### `delete_observations`
 Delete specific observations from entities.
 
 **Parameters:**
@@ -116,28 +117,28 @@ Delete specific observations from entities.
   - `entityName` (string): Name of the entity
   - `observations` (array of strings): Observations to delete
 
-#### `delete_relations`
+### `delete_relations`
 Delete relations from the knowledge graph.
 
 **Parameters:**
 - `relations` (array): Array of relation objects to delete
 
-#### `open_nodes`
+### `open_nodes`
 Retrieve specific entities by name.
 
 **Parameters:**
 - `names` (array of strings): Entity names to retrieve
 
-#### `read_graph`
+### `read_graph`
 Read the entire knowledge graph including all entities and relations.
 
-#### `search_nodes`
+### `search_nodes`
 Search for entities matching a query.
 
 **Parameters:**
 - `query` (string): Search query (matches entity names, types, and observation content)
 
-#### `query_by_time`
+### `query_by_time`
 Query entities and observations by time range using createdAt/updatedAt timestamps.
 
 **Parameters:**
@@ -146,30 +147,13 @@ Query entities and observations by time range using createdAt/updatedAt timestam
 - `limit` (number, optional): Maximum number of results to return
 - `sort` (string, optional): Sort order by updatedAt - "asc" or "desc" (default: "desc")
 
-**Example:**
-```json
-{
-  "since": "2026-01-01T00:00:00Z",
-  "until": "2026-12-31T23:59:59Z",
-  "limit": 20,
-  "sort": "desc"
-}
-```
-
-#### `get_recent`
+### `get_recent`
 Get the most recently updated entities.
 
 **Parameters:**
 - `limit` (number, optional): Maximum number of recent entities to return (default: 10)
 
-**Example:**
-```json
-{
-  "limit": 5
-}
-```
-
-#### `traverse_graph`
+### `traverse_graph`
 Traverse the knowledge graph from a starting entity to find connected entities via relations.
 
 **Parameters:**
@@ -177,24 +161,13 @@ Traverse the knowledge graph from a starting entity to find connected entities v
 - `depth` (number, optional): Number of hops to traverse (default: 1)
 - `direction` (string, optional): Direction of traversal - "out" (outgoing relations), "in" (incoming relations), or "both" (default: "both")
 
-**Example:**
-```json
-{
-  "start": "Alice",
-  "depth": 2,
-  "direction": "both"
-}
-```
+## 🛠️ Development
 
-## Development
-
-### Build
 ```bash
+# Build
 npm run build
-```
 
-### Watch Mode
-```bash
+# Watch mode for development
 npm run dev
 ```
 
@@ -209,10 +182,10 @@ TypeScript types are defined in `src/types.ts` for:
 - KnowledgeGraph
 - GraphTraversalResult
 
-## Data Model Changes (v1.1.0)
+## 📊 Data Model
 
 ### Observations
-Observations are now objects instead of plain strings:
+Observations are rich objects with metadata:
 ```typescript
 interface Observation {
   content: string;
@@ -223,7 +196,7 @@ interface Observation {
 ```
 
 ### Entities
-Entities now include timestamps and optional metadata:
+Entities include timestamps and optional metadata:
 ```typescript
 interface Entity {
   name: string;
@@ -238,7 +211,7 @@ interface Entity {
 ### Auto-Migration
 Legacy data with plain-string observations is automatically migrated on load. Plain strings are converted to Observation objects with `createdAt` set to the current time.
 
-## MCP Configuration
+## ⚙️ Configuration
 
 Add this server to your MCP client configuration:
 
@@ -253,12 +226,12 @@ Add this server to your MCP client configuration:
 }
 ```
 
-## Architecture
+## 📁 Architecture
 
-- `src/index.ts`: Main MCP server with tool handlers
-- `src/memoryService.ts`: Core memory service managing the knowledge graph
-- `src/types.ts`: TypeScript type definitions
+- `src/index.ts` - Main MCP server with tool handlers
+- `src/memoryService.ts` - Core memory service managing the knowledge graph
+- `src/types.ts` - TypeScript type definitions
 
-## License
+## 📄 License
 
 MIT
