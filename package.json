@@ -1,0 +1,29 @@
+{
+  "name": "mcp-memory-agent",
+  "version": "1.1.0",
+  "description": "MCP server for persistent knowledge graph memory - store entities, observations, and relations",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "mcp",
+    "memory",
+    "knowledge-graph",
+    "entities",
+    "observations"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
