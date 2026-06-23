@@ -2,10 +2,10 @@
   "mcpServers": {
     "memory_custom": {
       "command": "node",
-      "args": ["/home/mhefny/code/mcp/mcp-memory-agent/dist/index.js"],
+      "args": ["/home/mhefny/code/mcp/mcp_notes/dist/index.js"],
       "env": {
-        "MEMORY_OUTPUT_DIR": "/home/mhefny/code/mcp/mcp-memory-agent/output",
-        "MEMORY_STORAGE_PATH": "/home/mhefny/code/mcp/mcp-memory-agent/memory-storage.json"
+        "MEMORY_OUTPUT_DIR": "/home/mhefny/code/mcp/mcp_notes/output",
+        "MEMORY_STORAGE_PATH": "/home/mhefny/code/mcp/mcp_notes/memory-storage.json"
       }
     }
   }

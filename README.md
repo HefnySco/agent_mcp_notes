@@ -1,6 +1,6 @@
-# MCP Memory Agent
+# MCP Notes
 
-A Model Context Protocol (MCP) server for persistent knowledge graph memory. This server allows you to store and retrieve entities, observations, and relations in a structured knowledge graph with temporal queries, graph traversal, and rich metadata.
+A Model Context Protocol (MCP) server for persistent knowledge graph notes. This server allows you to store and retrieve entities, observations, and relations in a structured knowledge graph with temporal queries, graph traversal, and rich metadata.
 
 ## Features
 
@@ -247,7 +247,7 @@ Add this server to your MCP client configuration:
   "mcpServers": {
     "memory": {
       "command": "node",
-      "args": ["/path/to/mcp-memory-agent/dist/index.js"]
+      "args": ["/path/to/mcp_notes/dist/index.js"]
     }
   }
 }
