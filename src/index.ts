@@ -316,6 +316,105 @@ class MemoryMCPServer {
             }
           },
           {
+            name: 'fuzzy_search',
+            description: 'Search for nodes using fuzzy matching with Levenshtein distance for typos and misspellings',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query to match against entity names, types, and observation content'
+                },
+                threshold: {
+                  type: 'number',
+                  default: 0.7,
+                  description: 'Similarity threshold (0-1), higher means stricter matching'
+                }
+              },
+              required: ['query']
+            }
+          },
+          {
+            name: 'semantic_search',
+            description: 'Search for nodes using semantic similarity with vector embeddings',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query to match semantically against entity names, types, and observation content'
+                },
+                threshold: {
+                  type: 'number',
+                  default: 0.5,
+                  description: 'Similarity threshold (0-1), higher means stricter matching'
+                },
+                limit: {
+                  type: 'number',
+                  default: 10,
+                  description: 'Maximum number of results to return'
+                }
+              },
+              required: ['query']
+            }
+          },
+          {
+            name: 'graph_analytics',
+            description: 'Compute graph analytics including centrality measures',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                metric: {
+                  type: 'string',
+                  enum: ['degree', 'betweenness', 'closeness', 'all'],
+                  description: 'The centrality metric to compute'
+                }
+              },
+              required: ['metric']
+            }
+          },
+          {
+            name: 'shortest_path',
+            description: 'Find the shortest path between two entities in the graph',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                source: {
+                  type: 'string',
+                  description: 'Name of the source entity'
+                },
+                target: {
+                  type: 'string',
+                  description: 'Name of the target entity'
+                },
+                weighted: {
+                  type: 'boolean',
+                  default: false,
+                  description: 'Use weighted edges (requires weights parameter)'
+                },
+                weights: {
+                  type: 'object',
+                  description: 'Optional edge weights as key-value pairs (format: "source-target": weight)'
+                }
+              },
+              required: ['source', 'target']
+            }
+          },
+          {
+            name: 'detect_communities',
+            description: 'Detect communities in the graph using label propagation algorithm',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                maxIterations: {
+                  type: 'number',
+                  default: 100,
+                  description: 'Maximum number of iterations for convergence'
+                }
+              }
+            }
+          },
+          {
             name: 'get_version',
             description: 'Get the version information of this memory MCP server',
             inputSchema: {
@@ -608,6 +707,160 @@ class MemoryMCPServer {
                     query,
                     results: entities,
                     count: entities.length
+                  }, null, 2)
+                }
+              ]
+            };
+            await this.logRequest(name, args, result);
+            return result;
+          }
+
+          case 'fuzzy_search': {
+            const query = args?.query as string;
+            const threshold = args?.threshold as number || 0.7;
+            if (!query) {
+              throw new Error('query is required');
+            }
+
+            const entities = this.memoryService.fuzzySearch(query, threshold);
+
+            const result = {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    query,
+                    threshold,
+                    results: entities,
+                    count: entities.length
+                  }, null, 2)
+                }
+              ]
+            };
+            await this.logRequest(name, args, result);
+            return result;
+          }
+
+          case 'semantic_search': {
+            const query = args?.query as string;
+            const threshold = args?.threshold as number || 0.5;
+            const limit = args?.limit as number || 10;
+            if (!query) {
+              throw new Error('query is required');
+            }
+
+            const entities = await this.memoryService.semanticSearch(query, threshold, limit);
+
+            const result = {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    query,
+                    threshold,
+                    limit,
+                    results: entities,
+                    count: entities.length
+                  }, null, 2)
+                }
+              ]
+            };
+            await this.logRequest(name, args, result);
+            return result;
+          }
+
+          case 'graph_analytics': {
+            const metric = args?.metric as string;
+            if (!metric) {
+              throw new Error('metric is required');
+            }
+
+            const results: Record<string, any> = {};
+
+            if (metric === 'degree' || metric === 'all') {
+              const degree = this.memoryService.degreeCentrality();
+              results.degree = Array.from(degree.entries()).map(([name, value]) => ({ name, value }));
+            }
+
+            if (metric === 'betweenness' || metric === 'all') {
+              const betweenness = this.memoryService.betweennessCentrality();
+              results.betweenness = Array.from(betweenness.entries()).map(([name, value]) => ({ name, value }));
+            }
+
+            if (metric === 'closeness' || metric === 'all') {
+              const closeness = this.memoryService.closenessCentrality();
+              results.closeness = Array.from(closeness.entries()).map(([name, value]) => ({ name, value }));
+            }
+
+            const result = {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    metric,
+                    results
+                  }, null, 2)
+                }
+              ]
+            };
+            await this.logRequest(name, args, result);
+            return result;
+          }
+
+          case 'shortest_path': {
+            const source = args?.source as string;
+            const target = args?.target as string;
+            const weighted = args?.weighted as boolean || false;
+            const weights = args?.weights as Record<string, number> | undefined;
+
+            if (!source || !target) {
+              throw new Error('source and target are required');
+            }
+
+            let path: string[] | null;
+            if (weighted) {
+              const weightMap = weights ? new Map(Object.entries(weights)) : undefined;
+              path = this.memoryService.dijkstraShortestPath(source, target, weightMap);
+            } else {
+              path = this.memoryService.shortestPath(source, target);
+            }
+
+            const result = {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    source,
+                    target,
+                    weighted,
+                    path,
+                    length: path ? path.length : 0,
+                    found: path !== null
+                  }, null, 2)
+                }
+              ]
+            };
+            await this.logRequest(name, args, result);
+            return result;
+          }
+
+          case 'detect_communities': {
+            const maxIterations = args?.maxIterations as number || 100;
+
+            const communities = this.memoryService.labelPropagationCommunities(maxIterations);
+
+            const result = {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    maxIterations,
+                    communities: Array.from(communities.entries()).map(([label, members]) => ({
+                      label,
+                      members,
+                      size: members.length
+                    })),
+                    communityCount: communities.size
                   }, null, 2)
                 }
               ]

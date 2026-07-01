@@ -1,6 +1,6 @@
 {
   "name": "mcp_notes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for persistent knowledge graph notes - store entities, observations, and relations",
   "main": "dist/index.js",
   "type": "module",
@@ -20,9 +20,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "fast-levenshtein": "^3.0.0",
+    "@xenova/transformers": "^2.17.0"
   },
   "devDependencies": {
+    "@types/fast-levenshtein": "^0.0.4",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }

@@ -1,10 +1,16 @@
 import { Entity, Relation, KnowledgeGraph, ObservationAddition, ObservationDeletion, RelationDeletion, Observation, GraphTraversalResult } from './types.js';
 import fs from 'fs/promises';
 import path from 'path';
+import levenshtein from 'fast-levenshtein';
+import { pipeline, env } from '@xenova/transformers';
+
+// Skip local model checks for transformers.js
+env.allowLocalModels = false;
 
 export class MemoryService {
   private graph: KnowledgeGraph;
   private storagePath: string;
+  private embeddingModel: any = null;
 
   constructor(storagePath: string = '/tmp/mcp-memory-storage.json') {
     this.storagePath = storagePath;
@@ -13,6 +19,38 @@ export class MemoryService {
       relations: []
     };
     this.loadFromDisk();
+  }
+
+  private async getEmbeddingModel() {
+    if (!this.embeddingModel) {
+      // Load a lightweight sentence embedding model
+      this.embeddingModel = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    }
+    return this.embeddingModel;
+  }
+
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const model = await this.getEmbeddingModel();
+      const output = await model(text, { pooling: 'mean', normalize: true });
+      return Array.from(output.data);
+    } catch (error) {
+      console.error('Failed to generate embedding:', error);
+      return [];
+    }
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length === 0 || b.length === 0) return 0;
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   private normalizeObservation(input: string | Partial<Observation>): Observation {
@@ -109,7 +147,7 @@ export class MemoryService {
     await this.saveToDisk();
   }
 
-  async addObservations(additions: ObservationAddition[]): Promise<void> {
+  async addObservations(additions: ObservationAddition[], generateEmbeddings: boolean = false): Promise<void> {
     const now = new Date().toISOString();
     for (const addition of additions) {
       const entity = this.graph.entities.get(addition.entityName);
@@ -118,6 +156,10 @@ export class MemoryService {
           const obs = this.normalizeObservation(input);
           // Deduplicate by content
           if (!entity.observations.some(o => o.content === obs.content)) {
+            // Generate embedding if requested
+            if (generateEmbeddings) {
+              obs.embedding = await this.generateEmbedding(obs.content);
+            }
             entity.observations.push(obs);
           }
         }
@@ -210,6 +252,414 @@ export class MemoryService {
     }
 
     return results;
+  }
+
+  fuzzySearch(query: string, threshold: number = 0.7): Entity[] {
+    const results: Entity[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    for (const [name, entity] of this.graph.entities) {
+      let bestScore = 0;
+      let matchField = '';
+
+      // Check name similarity
+      const nameDistance = levenshtein.get(name.toLowerCase(), lowerQuery);
+      const nameSimilarity = 1 - (nameDistance / Math.max(name.length, query.length));
+      if (nameSimilarity > bestScore) {
+        bestScore = nameSimilarity;
+        matchField = 'name';
+      }
+
+      // Check entity type similarity
+      const typeDistance = levenshtein.get(entity.entityType.toLowerCase(), lowerQuery);
+      const typeSimilarity = 1 - (typeDistance / Math.max(entity.entityType.length, query.length));
+      if (typeSimilarity > bestScore) {
+        bestScore = typeSimilarity;
+        matchField = 'type';
+      }
+
+      // Check observation content similarity
+      for (const obs of entity.observations) {
+        const obsDistance = levenshtein.get(obs.content.toLowerCase(), lowerQuery);
+        const obsSimilarity = 1 - (obsDistance / Math.max(obs.content.length, query.length));
+        if (obsSimilarity > bestScore) {
+          bestScore = obsSimilarity;
+          matchField = 'observation';
+        }
+      }
+
+      if (bestScore >= threshold) {
+        results.push({
+          ...entity,
+          metadata: {
+            ...entity.metadata,
+            fuzzyMatchScore: bestScore,
+            fuzzyMatchField: matchField
+          }
+        });
+      }
+    }
+
+    // Sort by similarity score descending
+    results.sort((a, b) => {
+      const scoreA = (a.metadata as any)?.fuzzyMatchScore || 0;
+      const scoreB = (b.metadata as any)?.fuzzyMatchScore || 0;
+      return scoreB - scoreA;
+    });
+
+    return results;
+  }
+
+  async semanticSearch(query: string, threshold: number = 0.5, limit: number = 10): Promise<Entity[]> {
+    const queryEmbedding = await this.generateEmbedding(query);
+    if (queryEmbedding.length === 0) {
+      return [];
+    }
+
+    const results: Array<{ entity: Entity; score: number }> = [];
+
+    for (const [name, entity] of this.graph.entities) {
+      let bestScore = 0;
+      let bestObservation = '';
+
+      // Check entity name
+      const nameEmbedding = await this.generateEmbedding(name);
+      const nameScore = this.cosineSimilarity(queryEmbedding, nameEmbedding);
+      if (nameScore > bestScore) {
+        bestScore = nameScore;
+        bestObservation = name;
+      }
+
+      // Check entity type
+      const typeEmbedding = await this.generateEmbedding(entity.entityType);
+      const typeScore = this.cosineSimilarity(queryEmbedding, typeEmbedding);
+      if (typeScore > bestScore) {
+        bestScore = typeScore;
+        bestObservation = entity.entityType;
+      }
+
+      // Check observations with embeddings
+      for (const obs of entity.observations) {
+        if (obs.embedding && obs.embedding.length > 0) {
+          const obsScore = this.cosineSimilarity(queryEmbedding, obs.embedding);
+          if (obsScore > bestScore) {
+            bestScore = obsScore;
+            bestObservation = obs.content;
+          }
+        }
+      }
+
+      if (bestScore >= threshold) {
+        results.push({
+          entity: {
+            ...entity,
+            metadata: {
+              ...entity.metadata,
+              semanticMatchScore: bestScore,
+              semanticMatchContent: bestObservation
+            }
+          },
+          score: bestScore
+        });
+      }
+    }
+
+    // Sort by similarity score descending and apply limit
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit).map(r => r.entity);
+  }
+
+  // Graph Analytics Methods
+  degreeCentrality(): Map<string, number> {
+    const centrality = new Map<string, number>();
+    const maxDegree = this.graph.relations.length * 2; // Upper bound
+
+    for (const [name] of this.graph.entities) {
+      const degree = this.graph.relations.filter(
+        r => r.from === name || r.to === name
+      ).length;
+      centrality.set(name, maxDegree > 0 ? degree / maxDegree : 0);
+    }
+
+    return centrality;
+  }
+
+  betweennessCentrality(): Map<string, number> {
+    const centrality = new Map<string, number>();
+    const entityNames = Array.from(this.graph.entities.keys());
+
+    // Initialize all to 0
+    for (const name of entityNames) {
+      centrality.set(name, 0);
+    }
+
+    // For each pair of nodes, find shortest paths and count betweenness
+    for (let i = 0; i < entityNames.length; i++) {
+      for (let j = i + 1; j < entityNames.length; j++) {
+        const source = entityNames[i];
+        const target = entityNames[j];
+        const paths = this.findAllShortestPaths(source, target);
+
+        for (const path of paths) {
+          // Count intermediate nodes
+          for (let k = 1; k < path.length - 1; k++) {
+            const intermediate = path[k];
+            const current = centrality.get(intermediate) || 0;
+            centrality.set(intermediate, current + 1 / paths.length);
+          }
+        }
+      }
+    }
+
+    // Normalize
+    const maxBetweenness = Math.max(...Array.from(centrality.values()));
+    if (maxBetweenness > 0) {
+      for (const [name, value] of centrality) {
+        centrality.set(name, value / maxBetweenness);
+      }
+    }
+
+    return centrality;
+  }
+
+  closenessCentrality(): Map<string, number> {
+    const centrality = new Map<string, number>();
+    const entityNames = Array.from(this.graph.entities.keys());
+
+    for (const source of entityNames) {
+      let totalDistance = 0;
+      let reachableCount = 0;
+
+      for (const target of entityNames) {
+        if (source === target) continue;
+
+        const distance = this.shortestPathLength(source, target);
+        if (distance !== Infinity) {
+          totalDistance += distance;
+          reachableCount++;
+        }
+      }
+
+      if (reachableCount > 0) {
+        const closeness = (reachableCount - 1) / totalDistance;
+        centrality.set(source, closeness);
+      } else {
+        centrality.set(source, 0);
+      }
+    }
+
+    return centrality;
+  }
+
+  private findAllShortestPaths(source: string, target: string): string[][] {
+    const paths: string[][] = [];
+    const queue: { node: string; path: string[] }[] = [{ node: source, path: [source] }];
+    const visited = new Set<string>();
+    let shortestLength = Infinity;
+
+    while (queue.length > 0) {
+      const { node, path } = queue.shift()!;
+
+      if (node === target) {
+        if (path.length < shortestLength) {
+          shortestLength = path.length;
+          paths.length = 0; // Clear previous longer paths
+          paths.push(path);
+        } else if (path.length === shortestLength) {
+          paths.push(path);
+        }
+        continue;
+      }
+
+      if (path.length >= shortestLength) continue;
+
+      visited.add(node);
+
+      const neighbors = this.getNeighbors(node);
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          queue.push({ node: neighbor, path: [...path, neighbor] });
+        }
+      }
+    }
+
+    return paths;
+  }
+
+  private shortestPathLength(source: string, target: string): number {
+    if (source === target) return 0;
+
+    const queue: { node: string; distance: number }[] = [{ node: source, distance: 0 }];
+    const visited = new Set<string>([source]);
+
+    while (queue.length > 0) {
+      const { node, distance } = queue.shift()!;
+
+      if (node === target) return distance;
+
+      const neighbors = this.getNeighbors(node);
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push({ node: neighbor, distance: distance + 1 });
+        }
+      }
+    }
+
+    return Infinity;
+  }
+
+  private getNeighbors(node: string): string[] {
+    const neighbors = new Set<string>();
+    for (const relation of this.graph.relations) {
+      if (relation.from === node) neighbors.add(relation.to);
+      if (relation.to === node) neighbors.add(relation.from);
+    }
+    return Array.from(neighbors);
+  }
+
+  shortestPath(source: string, target: string): string[] | null {
+    if (source === target) return [source];
+
+    const queue: { node: string; path: string[] }[] = [{ node: source, path: [source] }];
+    const visited = new Set<string>([source]);
+
+    while (queue.length > 0) {
+      const { node, path } = queue.shift()!;
+
+      if (node === target) return path;
+
+      const neighbors = this.getNeighbors(node);
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push({ node: neighbor, path: [...path, neighbor] });
+        }
+      }
+    }
+
+    return null; // No path found
+  }
+
+  dijkstraShortestPath(source: string, target: string, weights?: Map<string, number>): string[] | null {
+    if (source === target) return [source];
+
+    const distances = new Map<string, number>();
+    const previous = new Map<string, string | null>();
+    const unvisited = new Set<string>(this.graph.entities.keys());
+
+    for (const name of this.graph.entities.keys()) {
+      distances.set(name, Infinity);
+      previous.set(name, null);
+    }
+    distances.set(source, 0);
+
+    while (unvisited.size > 0) {
+      // Find unvisited node with smallest distance
+      let current: string | null = null;
+      let minDistance = Infinity;
+
+      for (const node of unvisited) {
+        const dist = distances.get(node) || Infinity;
+        if (dist < minDistance) {
+          minDistance = dist;
+          current = node;
+        }
+      }
+
+      if (current === null || minDistance === Infinity) break;
+      if (current === target) break;
+
+      unvisited.delete(current);
+
+      const neighbors = this.getNeighbors(current);
+      for (const neighbor of neighbors) {
+        if (!unvisited.has(neighbor)) continue;
+
+        // Get edge weight (default to 1 if not provided)
+        const edgeKey = `${current}-${neighbor}`;
+        const edgeWeight = weights?.get(edgeKey) || 1;
+
+        const alt = (distances.get(current) || 0) + edgeWeight;
+        if (alt < (distances.get(neighbor) || Infinity)) {
+          distances.set(neighbor, alt);
+          previous.set(neighbor, current);
+        }
+      }
+    }
+
+    // Reconstruct path
+    const path: string[] = [];
+    let current: string | null = target;
+
+    if (previous.get(current) === null && current !== source) {
+      return null; // No path found
+    }
+
+    while (current !== null) {
+      path.unshift(current);
+      current = previous.get(current) || null;
+    }
+
+    return path.length > 0 ? path : null;
+  }
+
+  labelPropagationCommunities(maxIterations: number = 100): Map<string, string[]> {
+    const communities = new Map<string, Set<string>>();
+    const labels = new Map<string, string>();
+
+    // Initialize each node with its own label
+    for (const name of this.graph.entities.keys()) {
+      labels.set(name, name);
+      communities.set(name, new Set([name]));
+    }
+
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      let changed = false;
+      const nodes = Array.from(this.graph.entities.keys());
+
+      // Process nodes in random order
+      for (const node of nodes) {
+        const neighbors = this.getNeighbors(node);
+        if (neighbors.length === 0) continue;
+
+        // Count label frequencies among neighbors
+        const labelCounts = new Map<string, number>();
+        for (const neighbor of neighbors) {
+          const label = labels.get(neighbor) || neighbor;
+          labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+        }
+
+        // Find most frequent label
+        let maxCount = 0;
+        let newLabel = labels.get(node) || node;
+
+        for (const [label, count] of labelCounts) {
+          if (count > maxCount || (count === maxCount && Math.random() > 0.5)) {
+            maxCount = count;
+            newLabel = label;
+          }
+        }
+
+        if (newLabel !== labels.get(node)) {
+          labels.set(node, newLabel);
+          changed = true;
+        }
+      }
+
+      if (!changed) break; // Convergence
+    }
+
+    // Group nodes by their final labels
+    const result = new Map<string, string[]>();
+    for (const [node, label] of labels) {
+      if (!result.has(label)) {
+        result.set(label, []);
+      }
+      result.get(label)!.push(node);
+    }
+
+    return result;
   }
 
   getEntity(name: string): Entity | undefined {

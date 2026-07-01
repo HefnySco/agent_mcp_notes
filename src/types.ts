@@ -3,6 +3,7 @@ export interface Observation {
   createdAt: string; // ISO timestamp
   confidence?: number; // 0-1
   source?: string;
+  embedding?: number[]; // Vector embedding for semantic search
 }
 
 export interface Entity {
